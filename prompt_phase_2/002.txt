@@ -1,0 +1,9 @@
+Từ dàn ý ở trên viết thành 1 kịch bản hoàn chỉnh chi tiết khoảng 700-1000 từ. 
+
+QUAN TRỌNG: Bạn BẮT BUỘC phải trả về kết quả dưới định dạng JSON thuần túy (không có markdown, không có bất kỳ văn bản nào nằm ngoài JSON) với cấu trúc chính xác như sau:
+{
+  "title": "<Tiêu đề bài viết (Clickbait, tiếng Tây Ban Nha)>",
+  "description": "<Mô tả video bằng tiếng Tây Ban Nha khoảng 200 từ>",
+  "hashtags": ["<hashtag1>", "<hashtag2>", "..."],
+  "content": "<Nội dung kịch bản hoàn chỉnh bằng tiếng Tây Ban Nha>"
+}

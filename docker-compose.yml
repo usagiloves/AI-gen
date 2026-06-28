@@ -1,0 +1,37 @@
+version: "3.8"
+
+services:
+  app:
+    build: .
+    container_name: ai-reel-pipeline
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HEADLESS=true
+      - GEMINI_URL=https://gemini.google.com/app
+      - TEMP_VIDEO_DIR=temp_videos
+      - COOKIE_PATH=cookies/state.json
+      - PROMPT_PHASE_1_DIR=prompt_phase_1
+      - PROMPT_PHASE_2_DIR=prompt_phase_2
+      - PROMPT_KB_FILE=Prompt KB.txt
+      - LOG_LEVEL=info
+    volumes:
+      # Mount cookies để giữ session khi rebuild
+      - ./cookies:/app/cookies
+      # Mount prompt files để chỉnh sửa không cần rebuild
+      - ./prompt_phase_1:/app/prompt_phase_1
+      - ./prompt_phase_2:/app/prompt_phase_2
+      # Mount logs ra ngoài
+      - ./logs:/app/logs
+    restart: unless-stopped
+    # Giới hạn tài nguyên (Playwright tốn RAM)
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+    # Shared memory cho Chromium
+    shm_size: "1gb"
