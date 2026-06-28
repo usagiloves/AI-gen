@@ -109,6 +109,36 @@ app.post('/api/v1/generate-script', (req, res) => {
 });
 
 /**
+ * POST /api/v1/auth/google-login
+ * Start Google login browser
+ */
+const { startLogin, completeLogin } = require('../modules/login_agent');
+
+app.post('/api/v1/auth/google-login', async (req, res) => {
+  try {
+    const result = await startLogin();
+    return res.json(result);
+  } catch (error) {
+    log.error('Error starting login', { error: error.message });
+    return res.status(400).json({ status: 'error', message: error.message });
+  }
+});
+
+/**
+ * POST /api/v1/auth/google-login/done
+ * Close Google login browser
+ */
+app.post('/api/v1/auth/google-login/done', async (req, res) => {
+  try {
+    const result = await completeLogin();
+    return res.json(result);
+  } catch (error) {
+    log.error('Error completing login', { error: error.message });
+    return res.status(400).json({ status: 'error', message: error.message });
+  }
+});
+
+/**
  * GET /api/v1/task/:task_id
  * Kiểm tra trạng thái và lấy kết quả của task.
  */
@@ -128,27 +158,13 @@ app.get('/api/v1/task/:task_id', (req, res) => {
   // Format response dựa trên status
   const response = {
     task_id: task.taskId,
+    url: task.url,
     status: task.status,
     created_at: new Date(task.createdAt).toISOString(),
   };
 
   if (task.status === 'COMPLETED') {
-    let parsedResult = task.finalScript;
-    try {
-      // Cố gắng loại bỏ markdown block (```json ... ```) nếu Gemini trả về
-      let cleanScript = task.finalScript.replace(/```(?:json)?\n?/gi, '').replace(/```\n?/g, '').trim();
-      // Tìm ngoặc nhọn đầu và cuối để lấy JSON thuần
-      const startIdx = cleanScript.indexOf('{');
-      const endIdx = cleanScript.lastIndexOf('}');
-      if (startIdx !== -1 && endIdx !== -1) {
-        cleanScript = cleanScript.substring(startIdx, endIdx + 1);
-      }
-      parsedResult = JSON.parse(cleanScript);
-    } catch (e) {
-      // Nếu không parse được thì giữ nguyên string
-    }
-
-    response.result = parsedResult;
+    response.result = task.finalScript;
     response.completed_at = new Date(task.completedAt).toISOString();
   }
 

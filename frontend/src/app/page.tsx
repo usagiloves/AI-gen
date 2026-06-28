@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { io, Socket } from "socket.io-client";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, FileText, Download, CheckCircle2, XCircle, Send, Copy } from "lucide-react";
+import { Loader2, FileText, Download, CheckCircle2, XCircle, Send, Copy, UserCircle } from "lucide-react";
 
 // Types
 type TaskStatus = "QUEUED" | "DOWNLOADING" | "ANALYZING" | "GENERATING" | "COMPLETED" | "FAILED";
@@ -15,6 +15,7 @@ interface Task {
   videoSummary?: string;
   finalScript?: any;
   error?: string;
+  createdAt?: string;
 }
 
 export default function Home() {
@@ -22,9 +23,35 @@ export default function Home() {
   const [url, setUrl] = useState("");
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loginLoading, setLoginLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const [logs, setLogs] = useState<{timestamp: string, level: string, module: string, message: string}[]>([]);
+  const [history, setHistory] = useState<Task[]>([]);
+
+  // Fetch history on load
+  useEffect(() => {
+    fetch("http://localhost:3000/api/v1/tasks")
+      .then(res => res.json())
+      .then(data => {
+        if (data.tasks) {
+          // Fetch detailed task info for completed tasks to get finalScript
+          const completedTasks = data.tasks.filter((t: Task) => t.status === 'COMPLETED');
+          Promise.all(completedTasks.map((t: Task) => 
+            fetch(`http://localhost:3000/api/v1/task/${t.taskId}`).then(res => res.json())
+          )).then(detailedTasks => {
+            setHistory(detailedTasks.map((d: any) => ({
+              taskId: d.task_id,
+              url: d.url || 'History Task', // We might not have url in detail response if not returned, but task list has it. Let's merge.
+              status: d.status,
+              finalScript: d.result,
+              createdAt: d.created_at
+            })));
+          });
+        }
+      })
+      .catch(err => console.error("Failed to load history", err));
+  }, []);
 
   // Initialize Socket.IO
   useEffect(() => {
@@ -34,7 +61,16 @@ export default function Home() {
     newSocket.on("connect", () => console.log("Connected to API via Socket.IO"));
     
     newSocket.on("task:created", (task: Task) => setActiveTask(task));
-    newSocket.on("task:updated", (task: Task) => setActiveTask(task));
+    newSocket.on("task:updated", (task: Task) => {
+      setActiveTask(task);
+      if (task.status === 'COMPLETED') {
+        setHistory(prev => {
+          const exists = prev.find(t => t.taskId === task.taskId);
+          if (exists) return prev.map(t => t.taskId === task.taskId ? task : t);
+          return [task, ...prev];
+        });
+      }
+    });
     newSocket.on("system:log", (log) => {
       setLogs((prev) => [...prev.slice(-49), log]); // Keep last 50 logs
     });
@@ -66,6 +102,20 @@ export default function Home() {
       alert("Failed to connect to API");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleLogin = async () => {
+    setLoginLoading(true);
+    try {
+      // Bật cửa sổ login
+      await fetch("http://localhost:3000/api/v1/auth/google-login", { method: "POST" });
+      alert("Please login to Google in the opened browser window. The system will automatically save your session when you close the browser.");
+    } catch (error) {
+      console.error(error);
+      alert("Failed to initiate login");
+    } finally {
+      setLoginLoading(false);
     }
   };
 
@@ -103,12 +153,23 @@ export default function Home() {
             <p className="text-sm text-foreground/60">Automated Video-to-Script Pipeline</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 text-sm font-medium">
-          <span className="relative flex h-3 w-3">
-            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${socket?.connected ? 'bg-green-400' : 'bg-red-400'}`}></span>
-            <span className={`relative inline-flex rounded-full h-3 w-3 ${socket?.connected ? 'bg-green-500' : 'bg-red-500'}`}></span>
-          </span>
-          <span className="text-foreground/80">{socket?.connected ? "API Connected" : "Disconnected"}</span>
+        <div className="flex items-center gap-4 text-sm font-medium">
+          <button 
+            onClick={handleLogin}
+            disabled={loginLoading}
+            className="flex items-center gap-2 bg-white text-slate-700 hover:text-primary hover:bg-slate-50 px-4 py-2 rounded-xl border shadow-sm transition-all disabled:opacity-50"
+          >
+            {loginLoading ? <Loader2 size={16} className="animate-spin" /> : <UserCircle size={16} />}
+            {loginLoading ? "Opening..." : "Login Google"}
+          </button>
+          
+          <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border shadow-sm">
+            <span className="relative flex h-3 w-3">
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${socket?.connected ? 'bg-green-400' : 'bg-red-400'}`}></span>
+              <span className={`relative inline-flex rounded-full h-3 w-3 ${socket?.connected ? 'bg-green-500' : 'bg-red-500'}`}></span>
+            </span>
+            <span className="text-slate-600">{socket?.connected ? "API Connected" : "Disconnected"}</span>
+          </div>
         </div>
       </header>
 
@@ -226,6 +287,45 @@ export default function Home() {
               </motion.div>
             )}
           </AnimatePresence>
+
+          {/* History Section */}
+          <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200 border border-slate-100 flex flex-col gap-4 mt-auto">
+            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <CheckCircle2 className="text-primary" size={20} /> Recent Scripts
+            </h3>
+            {history.length > 0 ? (
+              <div className="flex flex-col gap-3 max-h-96 overflow-y-auto pr-2">
+                {history.map((t) => (
+                  <button
+                    key={t.taskId}
+                    onClick={() => setActiveTask(t)}
+                    className={`text-left p-4 rounded-2xl border transition-all ${
+                      activeTask?.taskId === t.taskId
+                        ? "border-primary bg-indigo-50/50 shadow-md shadow-indigo-100"
+                        : "border-slate-100 hover:border-indigo-200 hover:bg-slate-50"
+                    }`}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="text-xs font-mono text-slate-400">{t.taskId}</span>
+                      <span className="text-[10px] uppercase font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                        {new Date(t.createdAt as string).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <h4 className="font-semibold text-slate-700 line-clamp-1 mb-1">
+                      {t.finalScript?.title || t.url || 'Generated Script'}
+                    </h4>
+                    <p className="text-xs text-slate-500 line-clamp-2">
+                      {t.finalScript?.description || 'No description available.'}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-400 italic text-sm">
+                No scripts generated yet.
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Right Column: Result Viewer */}

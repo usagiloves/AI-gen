@@ -7,12 +7,50 @@
  * Task lifecycle: QUEUED → DOWNLOADING → ANALYZING → GENERATING → COMPLETED | FAILED
  */
 
+const fs = require('fs');
+const path = require('path');
 const { createModuleLogger } = require('../utils/logger');
+const { parseGeminiJson } = require('../utils/parser');
 
 const log = createModuleLogger('TaskStore');
 
+const DATA_DIR = path.join(__dirname, '../../data');
+const TASKS_FILE = path.join(DATA_DIR, 'tasks.json');
+
+// Ensure data dir exists
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
 /** @type {Map<string, TaskData>} */
 const tasks = new Map();
+
+function loadTasks() {
+  try {
+    if (fs.existsSync(TASKS_FILE)) {
+      const data = fs.readFileSync(TASKS_FILE, 'utf8');
+      const parsed = JSON.parse(data);
+      for (const [key, value] of Object.entries(parsed)) {
+        tasks.set(key, value);
+      }
+      log.info(`Loaded ${tasks.size} tasks from disk.`);
+    }
+  } catch (err) {
+    log.error('Failed to load tasks', { error: err.message });
+  }
+}
+
+function saveTasks() {
+  try {
+    const obj = Object.fromEntries(tasks);
+    fs.writeFileSync(TASKS_FILE, JSON.stringify(obj, null, 2));
+  } catch (err) {
+    log.error('Failed to save tasks', { error: err.message });
+  }
+}
+
+// Load initial tasks
+loadTasks();
 
 /**
  * @typedef {Object} TaskData
@@ -48,6 +86,7 @@ function createTask(taskId, url, webhookUrl = null) {
   };
 
   tasks.set(taskId, task);
+  saveTasks();
   log.info('Task created', { taskId, url });
 
   // Emit event to all connected clients
@@ -89,11 +128,17 @@ function updateTask(taskId, status, data = {}) {
   task.status = status;
   Object.assign(task, data);
 
+  // Parse JSON if finalScript is provided
+  if (task.finalScript && typeof task.finalScript === 'string') {
+    task.finalScript = parseGeminiJson(task.finalScript);
+  }
+
   if (status === 'COMPLETED' || status === 'FAILED') {
     task.completedAt = Date.now();
   }
 
   tasks.set(taskId, task);
+  saveTasks();
   log.info('Task updated', { taskId, status });
 
   // Emit event to all connected clients
