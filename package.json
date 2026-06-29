@@ -8,6 +8,7 @@
     "start:api": "node src/index.js",
     "start:worker": "node src/index.js",
     "dev": "nodemon src/index.js",
+    "dev:all": "concurrently \"npm run dev\" \"npm run dev --prefix frontend -- -p 3001\"",
     "login": "node src/scripts/login.js"
   },
   "keywords": [
@@ -29,6 +30,7 @@
     "winston": "^3.17.0"
   },
   "devDependencies": {
+    "concurrently": "^10.0.3",
     "nodemon": "^3.1.9"
   }
 }
